@@ -1,0 +1,12 @@
+__pycache__/
+*.py[cod]
+*.spec
+
+.references/
+build/
+dist/
+
+ui-preview*.png
+.idea/
+.vscode/
+
