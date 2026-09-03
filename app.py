@@ -100,7 +100,7 @@ class ToggleSwitch(QAbstractButton):
 
 
 class BatchWorker(QObject):
-    row_status = Signal(int, str, str)
+    row_status = Signal(int, str, str, str)
     progress = Signal(int)
     status = Signal(str)
     summary = Signal(dict)
@@ -127,7 +127,7 @@ class BatchWorker(QObject):
     def decode_one(self, index, item):
         if self.cancel.is_set():
             raise Cancelled("任务已取消")
-        self.row_status.emit(index, "", "解码中")
+        self.row_status.emit(index, "", "", "解码中")
         def update(done, size):
             with self._progress_lock:
                 self._fractions[index] = min(1.0, done / max(1, size))
@@ -163,12 +163,12 @@ class BatchWorker(QObject):
                         written = [name for name, present in (("歌词", result.lyrics_written), ("封面", result.cover_written)) if present]
                         if written:
                             label += " · " + " · ".join(written)
-                    self.row_status.emit(index, (result.audio_format or "").upper(), label)
+                    self.row_status.emit(index, (result.audio_format or "").upper(), (result.output_format or result.audio_format or "").upper(), label)
                 except Cancelled:
-                    self.row_status.emit(index, "", "已取消")
+                    self.row_status.emit(index, "", "", "已取消")
                 except Exception as error:
                     counts["failed"] += 1
-                    self.row_status.emit(index, "", f"失败：{error}")
+                    self.row_status.emit(index, "", "", f"失败：{error}")
                 completed += 1
                 self.status.emit(f"并行处理中  {completed}/{total} 已完成")
                 self.summary.emit(dict(counts))
@@ -257,10 +257,10 @@ class MainWindow(QMainWindow):
         table_panel = QWidget(); table_panel.setObjectName("panel"); table_layout = QVBoxLayout(table_panel); table_layout.setContentsMargins(0, 0, 0, 0)
         table_head = QHBoxLayout(); table_head.setContentsMargins(14, 10, 14, 8); self.summary_label = QLabel("0 个文件"); table_head.addWidget(self.summary_label); table_head.addStretch()
         formats = QLabel("多平台 · 自动识别"); formats.setObjectName("muted"); formats.setToolTip("网易云、酷狗、QQ 音乐及更多实验格式"); table_head.addWidget(formats); table_layout.addLayout(table_head)
-        self.table = QTableWidget(0, 5); self.table.setHorizontalHeaderLabels(["文件", "来源", "真实格式", "大小", "状态"]); self.table.verticalHeader().hide()
+        self.table = QTableWidget(0, 6); self.table.setHorizontalHeaderLabels(["文件", "来源", "真实格式", "输出格式", "大小", "状态"]); self.table.verticalHeader().hide()
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows); self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers); self.table.setAlternatingRowColors(True)
-        self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch); self.table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
-        for col in (1, 2, 3): self.table.horizontalHeader().setSectionResizeMode(col, QHeaderView.ResizeMode.ResizeToContents)
+        self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch); self.table.horizontalHeader().setSectionResizeMode(5, QHeaderView.ResizeMode.Stretch)
+        for col in (1, 2, 3, 4): self.table.horizontalHeader().setSectionResizeMode(col, QHeaderView.ResizeMode.ResizeToContents)
         table_layout.addWidget(self.table); page.addWidget(table_panel, 1)
 
         footer = QHBoxLayout(); progress_col = QVBoxLayout(); progress_head = QHBoxLayout()
@@ -328,7 +328,7 @@ class MainWindow(QMainWindow):
             path = path.resolve()
             if not path.is_file() or path.suffix.lower() not in SUPPORTED_SUFFIXES or path in existing: continue
             self.items.append(QueueItem(path, root)); row = self.table.rowCount(); self.table.insertRow(row)
-            for col, value in enumerate((path.name, service_for(path), "待识别", format_size(path.stat().st_size), "等待")): self.table.setItem(row, col, QTableWidgetItem(value))
+            for col, value in enumerate((path.name, service_for(path), "待识别", "待转换", format_size(path.stat().st_size), "等待")): self.table.setItem(row, col, QTableWidgetItem(value))
             existing.add(path); added += 1; added_qq = added_qq or service_for(path) == "QQ音乐"
         self.summary_label.setText(f"{len(self.items)} 个文件")
         if added_qq:
@@ -372,9 +372,10 @@ class MainWindow(QMainWindow):
         self.worker.finished.connect(self.worker.deleteLater); self.thread.finished.connect(self.thread_finished)
         self.thread.finished.connect(self.thread.deleteLater); self.thread.start()
 
-    def set_row_status(self, row, fmt, status):
-        if fmt: self.table.item(row, 2).setText(fmt)
-        self.table.item(row, 4).setText(status); self.table.scrollToItem(self.table.item(row, 0))
+    def set_row_status(self, row, source_fmt, output_fmt, status):
+        if source_fmt: self.table.item(row, 2).setText(source_fmt)
+        if output_fmt: self.table.item(row, 3).setText(output_fmt)
+        self.table.item(row, 5).setText(status); self.table.scrollToItem(self.table.item(row, 0))
     def set_progress(self, value): self.progress_bar.setValue(value); self.percent.setText(f"{value}%")
     def set_summary(self, counts): self.summary_label.setText(f"{len(self.items)} 个文件 · 完成 {counts['done']} · 跳过 {counts['skipped'] + counts['filtered']} · 失败 {counts['failed']}")
     def batch_finished(self, counts, cancelled):

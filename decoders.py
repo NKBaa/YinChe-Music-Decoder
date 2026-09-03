@@ -93,6 +93,7 @@ class DecodeResult:
     message: str
     lyrics_written: bool = False
     cover_written: bool = False
+    output_format: str | None = None
 
 
 @dataclass(frozen=True)
@@ -232,7 +233,11 @@ def transcode_audio(data: bytes, source_format: str, target_format: str, bitrate
             command += ["-codec:a", "flac"]
             if bit_depth != "auto": command += ["-sample_fmt", {"16": "s16", "24": "s32", "32": "s32"}[bit_depth]]
         command.append(str(target_path))
-        completed = subprocess.run(command, capture_output=True, timeout=300)
+        run_kwargs = {"capture_output": True, "timeout": 300}
+        if os.name == "nt":
+            # FFmpeg is a background worker; do not flash a console window per file.
+            run_kwargs["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
+        completed = subprocess.run(command, **run_kwargs)
         if completed.returncode != 0 or not target_path.exists():
             detail = completed.stderr.decode("utf-8", "replace").strip()
             raise DecodeError(f"FFmpeg 转码失败{(': ' + detail) if detail else ''}")
@@ -595,6 +600,7 @@ def decode_file(
         else:
             raise DecodeError("不支持此文件类型")
         audio_format = payload.audio_format
+        source_audio_format = audio_format
         if mode in {"mp3", "flac"} and audio_format != mode:
             audio_data = transcode_audio(audio_data, audio_format, mode, bitrate, bit_depth)
             payload = AudioPayload(mode, payload.metadata, payload.cover)
@@ -631,7 +637,7 @@ def decode_file(
         if cover_written:
             additions.append("封面")
         message = "解码完成" + ("，已写入" + "和".join(additions) if additions else "")
-        return DecodeResult(source, target, service, audio_format, "done", message, lyrics_written, cover_written)
+        return DecodeResult(source, target, service, source_audio_format, "done", message, lyrics_written, cover_written, audio_format)
     except Cancelled:
         temporary.unlink(missing_ok=True)
         raise

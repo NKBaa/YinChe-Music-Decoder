@@ -88,10 +88,13 @@ class DecoderTests(unittest.TestCase):
             else:
                 self.assertEqual(result.status, "done")
                 self.assertEqual(result.audio_format, "flac")
+                self.assertEqual(result.output_format, "flac")
 
     def test_transcode_audio_builds_mp3_command(self) -> None:
         from decoders import transcode_audio
         def fake_run(command, **kwargs):
+            self.assertIn("capture_output", kwargs)
+            self.assertIn("timeout", kwargs)
             Path(command[-1]).write_bytes(b"ID3converted")
             class Completed: returncode = 0; stderr = b""
             return Completed()
