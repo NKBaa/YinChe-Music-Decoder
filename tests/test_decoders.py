@@ -3,11 +3,12 @@ from __future__ import annotations
 import tempfile
 import unittest
 import shutil
+from unittest.mock import patch
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from threading import Event
 
-from decoders import (AudioPayload, KeyCache, decode_file, decode_kgm, detect_audio_format,
+from decoders import (AudioPayload, DecodeError, KeyCache, decode_file, decode_kgm, detect_audio_format,
                       detect_format, parse_qmc_tail, service_for, write_audio_tags)
 
 
@@ -74,15 +75,29 @@ class DecoderTests(unittest.TestCase):
             self.assertEqual(audio_data, KGM_EXPECTED.read_bytes())
 
     @unittest.skipUnless(KGM_FIXTURE.exists(), "reference fixture is not available")
-    def test_format_filter_does_not_transcode(self) -> None:
+    def test_target_format_requires_transcoding_tool(self) -> None:
         with tempfile.TemporaryDirectory() as folder:
             source = Path(folder) / "sample.kgm"
             output = Path(folder) / "output"
             shutil.copy2(KGM_FIXTURE, source)
-            result = decode_file(source, output, "flac", "rename", Event())
-            self.assertEqual(result.status, "filtered")
-            self.assertEqual(result.audio_format, "mp3")
-            self.assertEqual(list(output.iterdir()), [])
+            try:
+                result = decode_file(source, output, "flac", "rename", Event())
+            except DecodeError as error:
+                self.assertIn("FFmpeg", str(error))
+                self.assertEqual(list(output.iterdir()), [])
+            else:
+                self.assertEqual(result.status, "done")
+                self.assertEqual(result.audio_format, "flac")
+
+    def test_transcode_audio_builds_mp3_command(self) -> None:
+        from decoders import transcode_audio
+        def fake_run(command, **kwargs):
+            Path(command[-1]).write_bytes(b"ID3converted")
+            class Completed: returncode = 0; stderr = b""
+            return Completed()
+        with patch("decoders.ffmpeg_path", return_value="ffmpeg"), patch("decoders.subprocess.run", side_effect=fake_run):
+            output = transcode_audio(b"fLaCsource", "flac", "mp3", "192k")
+        self.assertTrue(output.startswith(b"ID3"))
 
     @unittest.skipUnless(KGM_FIXTURE.exists(), "reference fixture is not available")
     def test_parallel_outputs_do_not_collide(self) -> None:

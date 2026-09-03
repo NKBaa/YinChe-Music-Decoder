@@ -6,6 +6,9 @@ import json
 import lzma
 import os
 import re
+import shutil
+import subprocess
+import tempfile
 import struct
 import sys
 import threading
@@ -204,6 +207,36 @@ def detect_audio_format(header: bytes) -> str | None:
     if len(header) >= 12 and header[4:8] == b"ftyp":
         return "m4a"
     return None
+
+
+def ffmpeg_path() -> str | None:
+    return shutil.which("ffmpeg")
+
+
+def transcode_audio(data: bytes, source_format: str, target_format: str, bitrate: str = "auto", bit_depth: str = "auto") -> bytes:
+    executable = ffmpeg_path()
+    if not executable:
+        raise DecodeError("选择 MP3/FLAC 转码需要 FFmpeg，请将 ffmpeg.exe 加入 PATH 后重试")
+    source_suffix = "." + source_format
+    target_suffix = "." + target_format
+    with tempfile.TemporaryDirectory(prefix="yinche-convert-") as folder:
+        folder_path = Path(folder)
+        source_path = folder_path / ("input" + source_suffix)
+        target_path = folder_path / ("output" + target_suffix)
+        source_path.write_bytes(data)
+        command = [executable, "-hide_banner", "-loglevel", "error", "-y", "-i", str(source_path)]
+        if target_format == "mp3":
+            command += ["-codec:a", "libmp3lame"]
+            if bitrate != "auto": command += ["-b:a", bitrate]
+        elif target_format == "flac":
+            command += ["-codec:a", "flac"]
+            if bit_depth != "auto": command += ["-sample_fmt", {"16": "s16", "24": "s32", "32": "s32"}[bit_depth]]
+        command.append(str(target_path))
+        completed = subprocess.run(command, capture_output=True, timeout=300)
+        if completed.returncode != 0 or not target_path.exists():
+            detail = completed.stderr.decode("utf-8", "replace").strip()
+            raise DecodeError(f"FFmpeg 转码失败{(': ' + detail) if detail else ''}")
+        return target_path.read_bytes()
 
 
 def service_for(path: Path) -> str:
@@ -540,6 +573,8 @@ def decode_file(
     overwrite: str,
     cancel: Event,
     progress: Progress | None = None,
+    bitrate: str = "auto",
+    bit_depth: str = "auto",
 ) -> DecodeResult:
     info = detect_format(source)
     service = info.service
@@ -560,8 +595,10 @@ def decode_file(
         else:
             raise DecodeError("不支持此文件类型")
         audio_format = payload.audio_format
-        if mode != "auto" and audio_format != mode:
-            return DecodeResult(source, None, service, audio_format, "filtered", f"真实格式为 {audio_format.upper()}，未输出")
+        if mode in {"mp3", "flac"} and audio_format != mode:
+            audio_data = transcode_audio(audio_data, audio_format, mode, bitrate, bit_depth)
+            payload = AudioPayload(mode, payload.metadata, payload.cover)
+            audio_format = mode
         with _disk_write_lock:
             target = output_dir / f"{source.stem}.{audio_format}"
             with _output_lock:

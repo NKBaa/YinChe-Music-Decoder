@@ -12,7 +12,7 @@ from threading import Event
 from PySide6.QtCore import QEasingCurve, QObject, Property, QPropertyAnimation, QSize, QThread, Qt, Signal
 from PySide6.QtGui import QCloseEvent, QColor, QPainter
 from PySide6.QtWidgets import (QAbstractButton, QApplication, QButtonGroup, QFileDialog,
-    QGraphicsOpacityEffect, QGridLayout, QHBoxLayout, QHeaderView, QLabel, QLineEdit, QMainWindow, QMessageBox,
+    QComboBox, QGraphicsOpacityEffect, QGridLayout, QHBoxLayout, QHeaderView, QLabel, QLineEdit, QMainWindow, QMessageBox,
     QProgressBar, QPushButton, QRadioButton, QStyle, QTableWidget, QTableWidgetItem,
     QVBoxLayout, QWidget)
 
@@ -106,11 +106,12 @@ class BatchWorker(QObject):
     summary = Signal(dict)
     finished = Signal(dict, bool)
 
-    def __init__(self, items, output, mode, overwrite, preserve_tree, workers, cancel):
+    def __init__(self, items, output, mode, overwrite, preserve_tree, workers, cancel, bitrate="auto", bit_depth="auto"):
         super().__init__()
         self.items, self.output, self.mode = items, output, mode
         self.overwrite, self.preserve_tree, self.cancel = overwrite, preserve_tree, cancel
         self.workers = workers
+        self.bitrate, self.bit_depth = bitrate, bit_depth
         self._fractions = [0.0] * len(items)
         self._progress_lock = threading.Lock()
 
@@ -132,7 +133,7 @@ class BatchWorker(QObject):
                 self._fractions[index] = min(1.0, done / max(1, size))
                 value = int(sum(self._fractions) / len(self._fractions) * 100)
             self.progress.emit(value)
-        result = decode_file(item.path, self.output_for(item), self.mode, self.overwrite, self.cancel, update)
+        result = decode_file(item.path, self.output_for(item), self.mode, self.overwrite, self.cancel, update, self.bitrate, self.bit_depth)
         with self._progress_lock:
             self._fractions[index] = 1.0
             value = int(sum(self._fractions) / len(self._fractions) * 100)
@@ -224,6 +225,10 @@ class MainWindow(QMainWindow):
             self.overwrite_group.addButton(button, index); overwrite_layout.addWidget(button)
             if index == 0: button.setChecked(True)
         options.addWidget(overwrite_segment); options.addStretch(); settings.addLayout(options)
+        quality = QHBoxLayout(); quality.setSpacing(10); quality.addWidget(QLabel("码率"))
+        self.bitrate_combo = QComboBox(); self.bitrate_combo.setObjectName("qualityCombo"); self.bitrate_combo.addItems(["自动", "128k", "192k", "256k", "320k"]); self.bitrate_combo.setToolTip("MP3 转码码率；自动由 FFmpeg 决定"); quality.addWidget(self.bitrate_combo)
+        quality.addSpacing(12); quality.addWidget(QLabel("位深"))
+        self.bit_depth_combo = QComboBox(); self.bit_depth_combo.setObjectName("qualityCombo"); self.bit_depth_combo.addItems(["自动", "16 bit", "24 bit", "32 bit"]); self.bit_depth_combo.setToolTip("FLAC 转码采样位深；自动保留源音频能力"); quality.addWidget(self.bit_depth_combo); quality.addStretch(); settings.addLayout(quality)
         scan_options = QGridLayout(); scan_options.setHorizontalSpacing(28); scan_options.setVerticalSpacing(4)
         self.preserve = ToggleSwitch(True)
         self.preserve.setToolTip("输出时复刻导入文件夹内的子目录层级")
@@ -289,6 +294,9 @@ class MainWindow(QMainWindow):
         QPushButton#primary { background: #176b58; color: white; border-color: #176b58; font-weight: 600; } QPushButton#primary:hover { background: #125747; }
         QPushButton#danger { color: #a63832; border-color: #d8bbb8; } QLineEdit { background: white; border: 1px solid #cfd6da; border-radius: 8px; padding: 8px 10px; }
         QLineEdit:focus { border: 2px solid #2b7c69; padding: 7px 9px; }
+        QComboBox#qualityCombo { background: #ffffff; border: 1px solid #cfd6da; border-radius: 7px; padding: 7px 10px; min-width: 88px; }
+        QComboBox#qualityCombo:hover { border-color: #9fb6af; } QComboBox#qualityCombo:focus { border: 2px solid #2b7c69; padding: 6px 9px; }
+        QComboBox#qualityCombo::drop-down { border: 0; width: 24px; }
         #threadStepper { background: #edf2f1; border: 1px solid #dbe4e1; border-radius: 8px; }
         QPushButton#stepButton { min-width: 34px; max-width: 34px; min-height: 30px; padding: 0; border: 0; background: transparent; color: #176b58; font-size: 18px; font-weight: 500; }
         QPushButton#stepButton:hover { background: #dfeae7; }
@@ -356,7 +364,9 @@ class MainWindow(QMainWindow):
         try: output.mkdir(parents=True, exist_ok=True)
         except OSError as error: QMessageBox.critical(self, APP_NAME, f"无法创建输出目录：\n{error}"); return
         self.cancel.clear(); self.set_running(True); self.thread = QThread(self)
-        self.worker = BatchWorker(list(self.items), output, self.mode(), self.overwrite_mode(), self.preserve.isChecked(), self.thread_count.value(), self.cancel); self.worker.moveToThread(self.thread)
+        bitrate = self.bitrate_combo.currentText(); bitrate = "auto" if bitrate == "自动" else bitrate
+        bit_depth = self.bit_depth_combo.currentText().replace(" bit", ""); bit_depth = "auto" if bit_depth == "自动" else bit_depth
+        self.worker = BatchWorker(list(self.items), output, self.mode(), self.overwrite_mode(), self.preserve.isChecked(), self.thread_count.value(), self.cancel, bitrate, bit_depth); self.worker.moveToThread(self.thread)
         self.thread.started.connect(self.worker.run); self.worker.row_status.connect(self.set_row_status); self.worker.progress.connect(self.set_progress)
         self.worker.status.connect(self.status_label.setText); self.worker.summary.connect(self.set_summary); self.worker.finished.connect(self.batch_finished); self.worker.finished.connect(self.thread.quit)
         self.worker.finished.connect(self.worker.deleteLater); self.thread.finished.connect(self.thread_finished)
