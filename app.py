@@ -250,7 +250,7 @@ class MainWindow(QMainWindow):
 
         table_panel = QWidget(); table_panel.setObjectName("panel"); table_layout = QVBoxLayout(table_panel); table_layout.setContentsMargins(0, 0, 0, 0)
         table_head = QHBoxLayout(); table_head.setContentsMargins(14, 10, 14, 8); self.summary_label = QLabel("0 个文件"); table_head.addWidget(self.summary_label); table_head.addStretch()
-        formats = QLabel("支持 NCM · KGM/KGMA/VPR · QQMusicEx · QMC 识别"); formats.setObjectName("muted"); table_head.addWidget(formats); table_layout.addLayout(table_head)
+        formats = QLabel("多平台 · 自动识别"); formats.setObjectName("muted"); formats.setToolTip("网易云、酷狗、QQ 音乐及更多实验格式"); table_head.addWidget(formats); table_layout.addLayout(table_head)
         self.table = QTableWidget(0, 5); self.table.setHorizontalHeaderLabels(["文件", "来源", "真实格式", "大小", "状态"]); self.table.verticalHeader().hide()
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows); self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers); self.table.setAlternatingRowColors(True)
         self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch); self.table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
