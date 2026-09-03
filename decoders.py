@@ -5,6 +5,7 @@ import io
 import json
 import lzma
 import os
+import re
 import struct
 import sys
 import threading
@@ -24,7 +25,13 @@ from mutagen.oggvorbis import OggVorbis
 
 
 CHUNK_SIZE = 1024 * 1024
-SUPPORTED_SUFFIXES = {".ncm", ".kgm", ".kgma", ".vpr", ".mflac", ".mgg"}
+SUPPORTED_SUFFIXES = {
+    ".ncm", ".kgm", ".kgma", ".vpr", ".mflac", ".mflac0", ".mflach",
+    ".mgg", ".mgg0", ".mgg1", ".mggl", ".qmc0", ".qmc2", ".qmc3",
+    ".qmc4", ".qmc5", ".qmc6", ".qmc7", ".qmc8", ".qmcflac", ".qmcogg",
+    ".tkm", ".kwm", ".kgg", ".x2m", ".x3m", ".mg3d", ".xm",
+}
+EXPERIMENTAL_SUFFIXES = SUPPORTED_SUFFIXES - {".ncm", ".kgm", ".kgma", ".vpr", ".mflac", ".mgg"}
 NCM_CORE_KEY = bytes.fromhex("687a4852416d736f356b496e62617857")
 NCM_META_KEY = bytes.fromhex("2331346c6a6b5f215c5d2630553c2728")
 NCM_MAGIC = b"CTENFDAM"
@@ -92,6 +99,92 @@ class AudioPayload:
     cover: bytes = b""
 
 
+@dataclass(frozen=True)
+class FormatInfo:
+    suffix: str
+    service: str
+    version: str
+    status: str
+    note: str = ""
+
+
+def _suffix(path: Path) -> str:
+    name = path.name.lower()
+    for value in sorted(SUPPORTED_SUFFIXES, key=len, reverse=True):
+        if name.endswith(value):
+            return value
+    return path.suffix.lower()
+
+
+def parse_qmc_tail(data: bytes) -> dict[str, str]:
+    result: dict[str, str] = {}
+    for marker in (b"QTag", b"STag", b"MusicEx"):
+        if marker in data:
+            result[marker.decode("ascii")] = "present"
+    match = re.search(rb"media[_-]?mid[^A-Za-z0-9]{0,8}([A-Za-z0-9_-]{8,64})", data, re.I)
+    if match:
+        result["media_mid"] = match.group(1).decode("ascii", "ignore")
+    return result
+
+
+def detect_format(path: Path) -> FormatInfo:
+    suffix = _suffix(path)
+    if suffix == ".ncm":
+        return FormatInfo(suffix, "网易云音乐", "NCM", "supported")
+    if suffix in {".kgm", ".kgma", ".vpr"}:
+        return FormatInfo(suffix, "酷狗音乐", "KGM", "supported")
+    if suffix in {".mflac", ".mgg"}:
+        return FormatInfo(suffix, "QQ音乐", "MusicEx/客户端接口", "supported", "需要已登录 QQ 音乐客户端")
+    if suffix in {".mflac0", ".mflach", ".mgg0", ".mgg1", ".mggl"}:
+        return FormatInfo(suffix, "QQ音乐", "QMC2", "experimental", "将解析 QTag/STag/MusicEx；当前无可验证样本，未启用伪解码")
+    if suffix in {".qmc0", ".qmc2", ".qmc3", ".qmc4", ".qmc5", ".qmc6", ".qmc7", ".qmc8", ".qmcflac", ".qmcogg", ".tkm"}:
+        return FormatInfo(suffix, "QQ音乐", "QMC1", "experimental", "已识别老 QMC；尚未加入未经样本验证的密钥算法")
+    if suffix == ".kwm":
+        return FormatInfo(suffix, "酷我音乐", "KWM", "experimental", "格式已登记，等待可靠离线实现与样本验证")
+    if suffix == ".kgg":
+        return FormatInfo(suffix, "酷狗音乐", "KGG/KGM v5", "experimental", "可能需要客户端 Key，当前不伪造解码")
+    if suffix in {".x2m", ".x3m"}:
+        return FormatInfo(suffix, "喜马拉雅", "X2M/X3M", "experimental")
+    if suffix == ".mg3d":
+        return FormatInfo(suffix, "咪咕音乐", "MG3D", "experimental")
+    if suffix == ".xm":
+        return FormatInfo(suffix, "虾米音乐", "XM", "experimental")
+    return FormatInfo(suffix, "未知", "未知", "unsupported")
+
+
+class KeyCache:
+    def __init__(self, path: Path | None = None):
+        base = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData/Local")) / "YinChe"
+        self.path = path or base / "key-cache.json"
+        self._lock = threading.Lock()
+
+    def get(self, *identifiers: str) -> str | None:
+        try:
+            data = json.loads(self.path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return None
+        for identifier in identifiers:
+            if identifier and data.get(identifier):
+                return str(data[identifier])
+        return None
+
+    def put(self, ekey: str, *identifiers: str) -> None:
+        if not ekey or not identifiers:
+            return
+        try:
+            with self._lock:
+                self.path.parent.mkdir(parents=True, exist_ok=True)
+                try: data = json.loads(self.path.read_text(encoding="utf-8"))
+                except (OSError, ValueError): data = {}
+                for identifier in identifiers:
+                    if identifier: data[str(identifier)] = ekey
+                temporary = self.path.with_suffix(".tmp")
+                temporary.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+                os.replace(temporary, self.path)
+        except OSError:
+            return
+
+
 def resource_path(name: str) -> Path:
     base = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
     return base / name
@@ -114,13 +207,27 @@ def detect_audio_format(header: bytes) -> str | None:
 
 
 def service_for(path: Path) -> str:
-    suffix = path.suffix.lower()
+    suffix = _suffix(path)
     if suffix == ".ncm":
         return "网易云音乐"
     if suffix in {".kgm", ".kgma", ".vpr"}:
         return "酷狗音乐"
     if suffix in {".mflac", ".mgg"}:
         return "QQ音乐"
+    if suffix in {".qmc0", ".qmc2", ".qmc3", ".qmc4", ".qmc5", ".qmc6", ".qmc7", ".qmc8", ".qmcflac", ".qmcogg", ".tkm"}:
+        return "QQ音乐"
+    if suffix in {".mflac0", ".mflach", ".mgg0", ".mgg1", ".mggl"}:
+        return "QQ音乐"
+    if suffix in {".kwm"}:
+        return "酷我音乐"
+    if suffix in {".kgg"}:
+        return "酷狗音乐"
+    if suffix in {".x2m", ".x3m"}:
+        return "喜马拉雅"
+    if suffix == ".mg3d":
+        return "咪咕音乐"
+    if suffix == ".xm":
+        return "虾米音乐"
     return "未知"
 
 
@@ -434,10 +541,13 @@ def decode_file(
     cancel: Event,
     progress: Progress | None = None,
 ) -> DecodeResult:
-    service = service_for(source)
+    info = detect_format(source)
+    service = info.service
     temporary = output_dir / f".{source.name}.{os.getpid()}.{uuid.uuid4().hex}.part"
     output_dir.mkdir(parents=True, exist_ok=True)
     try:
+        if info.status == "experimental":
+            raise DecodeError(f"已识别 {info.version}，但当前版本尚无经过样本验证的可靠解码实现。{info.note}")
         def decode_progress(done: int, total: int) -> None:
             if progress:
                 progress(done * 70, total * 100)

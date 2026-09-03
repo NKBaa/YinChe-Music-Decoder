@@ -7,7 +7,8 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from threading import Event
 
-from decoders import AudioPayload, decode_file, decode_kgm, detect_audio_format, service_for, write_audio_tags
+from decoders import (AudioPayload, KeyCache, decode_file, decode_kgm, detect_audio_format,
+                      detect_format, parse_qmc_tail, service_for, write_audio_tags)
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -27,6 +28,26 @@ class DecoderTests(unittest.TestCase):
         self.assertEqual(service_for(Path("track.ncm")), "网易云音乐")
         self.assertEqual(service_for(Path("track.kgm")), "酷狗音乐")
         self.assertEqual(service_for(Path("track.mflac")), "QQ音乐")
+        self.assertEqual(service_for(Path("track.mflac0")), "QQ音乐")
+        self.assertEqual(service_for(Path("track.kwm")), "酷我音乐")
+
+    def test_format_detector_marks_unverified_formats(self) -> None:
+        info = detect_format(Path("track.mflac0"))
+        self.assertEqual((info.service, info.version, info.status), ("QQ音乐", "QMC2", "experimental"))
+        self.assertEqual(detect_format(Path("track.ncm")).status, "supported")
+
+    def test_qmc_tail_markers_and_media_mid(self) -> None:
+        parsed = parse_qmc_tail(b"...QTag...media_mid: abcdefghijk123...MusicEx")
+        self.assertEqual(parsed["QTag"], "present")
+        self.assertEqual(parsed["MusicEx"], "present")
+        self.assertEqual(parsed["media_mid"], "abcdefghijk123")
+
+    def test_key_cache_round_trip(self) -> None:
+        with tempfile.TemporaryDirectory() as folder:
+            cache = KeyCache(Path(folder) / "keys.json")
+            self.assertIsNone(cache.get("mid-1"))
+            cache.put("ekey-value", "mid-1", "song-1")
+            self.assertEqual(cache.get("missing", "mid-1"), "ekey-value")
 
     def test_sidecar_lyrics_and_cover_are_embedded_in_flac(self) -> None:
         decoded = Path.home() / "Music/Decoded/七朵组合 - 呵呵【七朵组合】.flac"

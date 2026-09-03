@@ -246,7 +246,7 @@ class MainWindow(QMainWindow):
 
         table_panel = QWidget(); table_panel.setObjectName("panel"); table_layout = QVBoxLayout(table_panel); table_layout.setContentsMargins(0, 0, 0, 0)
         table_head = QHBoxLayout(); table_head.setContentsMargins(14, 10, 14, 8); self.summary_label = QLabel("0 个文件"); table_head.addWidget(self.summary_label); table_head.addStretch()
-        formats = QLabel("支持 NCM · KGM/KGMA/VPR · MFLAC/MGG"); formats.setObjectName("muted"); table_head.addWidget(formats); table_layout.addLayout(table_head)
+        formats = QLabel("支持 NCM · KGM/KGMA/VPR · QQMusicEx · QMC 识别"); formats.setObjectName("muted"); table_head.addWidget(formats); table_layout.addLayout(table_head)
         self.table = QTableWidget(0, 5); self.table.setHorizontalHeaderLabels(["文件", "来源", "真实格式", "大小", "状态"]); self.table.verticalHeader().hide()
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows); self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers); self.table.setAlternatingRowColors(True)
         self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch); self.table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
@@ -299,7 +299,7 @@ class MainWindow(QMainWindow):
     def overwrite_mode(self): return ("rename", "skip", "overwrite")[self.overwrite_group.checkedId()]
 
     def add_files(self):
-        paths, _ = QFileDialog.getOpenFileNames(self, "选择加密音乐", "", "加密音乐 (*.ncm *.kgm *.kgma *.vpr *.mflac *.mgg);;所有文件 (*)")
+        paths, _ = QFileDialog.getOpenFileNames(self, "选择加密音乐", "", "加密音乐 (*.ncm *.kgm *.kgma *.vpr *.mflac *.mflac0 *.mflach *.mgg *.mgg0 *.mgg1 *.mggl *.qmc0 *.qmc2 *.qmc3 *.qmc4 *.qmc5 *.qmc6 *.qmc7 *.qmc8 *.qmcflac *.qmcogg *.tkm *.kwm *.kgg *.x2m *.x3m *.mg3d *.xm);;所有文件 (*)")
         self.add_paths(map(Path, paths))
 
     def add_folder(self):
