@@ -243,6 +243,10 @@ class MainWindow(QMainWindow):
         threads_help = QLabel("机械硬盘 2–4，SSD 4–8；20 线程可能受磁盘限制"); threads_help.setObjectName("helper"); threads_wrap.addWidget(threads_help)
         scan_options.addLayout(preserve_wrap); scan_options.addLayout(recursive_wrap); scan_options.addLayout(threads_wrap); scan_options.addStretch()
         settings.addLayout(scan_options); page.addWidget(panel)
+        self.client_notice = QLabel("🔐 QQ 音乐 MFLAC/MGG：需要启动并登录 QQ 音乐客户端；NCM、KGM/KGMA/VPR 可纯离线解码")
+        self.client_notice.setObjectName("clientNotice")
+        self.client_notice.setWordWrap(True)
+        settings.addWidget(self.client_notice)
 
         table_panel = QWidget(); table_panel.setObjectName("panel"); table_layout = QVBoxLayout(table_panel); table_layout.setContentsMargins(0, 0, 0, 0)
         table_head = QHBoxLayout(); table_head.setContentsMargins(14, 10, 14, 8); self.summary_label = QLabel("0 个文件"); table_head.addWidget(self.summary_label); table_head.addStretch()
@@ -293,6 +297,7 @@ class MainWindow(QMainWindow):
         QHeaderView::section { background: #eef1f3; border: 0; border-right: 1px solid #dfe4e7; padding: 9px; font-weight: 600; color: #505963; }
         QProgressBar { height: 7px; background: #dfe6e4; border: 0; border-radius: 3px; } QProgressBar::chunk { background: #1d8069; border-radius: 3px; }
         #successToast { background: #dff3ea; color: #155b49; border: 1px solid #a9dacb; border-radius: 8px; padding: 12px 18px; font-size: 14px; font-weight: 600; }
+        #clientNotice { background: #fff8e6; color: #765b16; border: 1px solid #ead9a6; border-radius: 7px; padding: 8px 10px; font-size: 12px; }
         """)
 
     def mode(self): return ("auto", "mp3", "flac")[self.format_group.checkedId()]
@@ -309,13 +314,18 @@ class MainWindow(QMainWindow):
 
     def add_paths(self, paths, root=None):
         existing = {item.path for item in self.items}; added = 0
+        added_qq = False
         for path in paths:
             path = path.resolve()
             if not path.is_file() or path.suffix.lower() not in SUPPORTED_SUFFIXES or path in existing: continue
             self.items.append(QueueItem(path, root)); row = self.table.rowCount(); self.table.insertRow(row)
             for col, value in enumerate((path.name, service_for(path), "待识别", format_size(path.stat().st_size), "等待")): self.table.setItem(row, col, QTableWidgetItem(value))
-            existing.add(path); added += 1
-        self.summary_label.setText(f"{len(self.items)} 个文件"); self.status_label.setText(f"已添加 {added} 个文件" if added else "没有发现新的支持文件")
+            existing.add(path); added += 1; added_qq = added_qq or service_for(path) == "QQ音乐"
+        self.summary_label.setText(f"{len(self.items)} 个文件")
+        if added_qq:
+            self.status_label.setText(f"已添加 {added} 个文件 · QQ 音乐文件需要已登录客户端")
+        else:
+            self.status_label.setText(f"已添加 {added} 个文件" if added else "没有发现新的支持文件")
 
     def choose_output(self):
         selected = QFileDialog.getExistingDirectory(self, "选择输出目录", self.output.text())
