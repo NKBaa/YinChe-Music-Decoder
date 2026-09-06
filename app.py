@@ -10,13 +10,13 @@ from pathlib import Path
 from threading import Event
 
 from PySide6.QtCore import QEasingCurve, QObject, Property, QPropertyAnimation, QSize, QThread, Qt, Signal
-from PySide6.QtGui import QCloseEvent, QColor, QPainter
+from PySide6.QtGui import QCloseEvent, QColor, QIcon, QPainter
 from PySide6.QtWidgets import (QAbstractButton, QApplication, QButtonGroup, QFileDialog,
     QComboBox, QGraphicsOpacityEffect, QGridLayout, QHBoxLayout, QHeaderView, QLabel, QLineEdit, QMainWindow, QMessageBox,
     QProgressBar, QPushButton, QRadioButton, QStyle, QTableWidget, QTableWidgetItem,
     QVBoxLayout, QWidget)
 
-from decoders import Cancelled, SUPPORTED_SUFFIXES, decode_file, service_for
+from decoders import Cancelled, SUPPORTED_SUFFIXES, decode_file, resource_path, service_for
 
 APP_NAME = "音澈"
 
@@ -182,6 +182,7 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle(f"{APP_NAME}  音乐解码")
+        self.setWindowIcon(QIcon(str(resource_path("assets/app-icon.ico"))))
         self.resize(1120, 720)
         self.setMinimumSize(900, 620)
         self.setAcceptDrops(True)
@@ -411,6 +412,6 @@ class MainWindow(QMainWindow):
 
 
 def main():
-    app = QApplication(sys.argv); app.setStyle("Fusion"); window = MainWindow(); window.show(); return app.exec()
+    app = QApplication(sys.argv); app.setStyle("Fusion"); app.setWindowIcon(QIcon(str(resource_path("assets/app-icon.ico")))); window = MainWindow(); window.show(); return app.exec()
 
 if __name__ == "__main__": raise SystemExit(main())

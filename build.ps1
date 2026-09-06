@@ -5,6 +5,7 @@ Set-Location $Root
 python -m pip install -r requirements.txt
 python -m PyInstaller --noconfirm --clean --onefile --windowed `
   --name "音澈-音乐解码" `
+  --icon "assets\app-icon.ico" `
   --add-data "hook_qq_music.js;." `
   --add-data "assets;assets" `
   --collect-all frida `

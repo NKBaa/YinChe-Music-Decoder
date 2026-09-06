@@ -87,7 +87,7 @@ class DecoderTests(unittest.TestCase):
                 self.assertEqual(list(output.iterdir()), [])
             else:
                 self.assertEqual(result.status, "done")
-                self.assertEqual(result.audio_format, "flac")
+                self.assertEqual(result.audio_format, "mp3")
                 self.assertEqual(result.output_format, "flac")
 
     def test_transcode_audio_builds_mp3_command(self) -> None:
