@@ -2,6 +2,15 @@
 
 > 一个清爽、专注的 Windows 音乐解码工具。
 
+**English** — YinChe is a batch audio decoder for Windows. It turns encrypted downloads from NetEase Cloud Music, Kugou and QQ Music (`.ncm`, `.kgm`, `.kgma`, `.vpr`, `.mflac`, `.mgg`) into plain MP3 / FLAC, sniffs the real format from the decrypted header, and writes tags, lyrics and cover art without re-encoding. Auto mode decrypts only and keeps the original format; MP3/FLAC modes transcode via FFmpeg.
+
+Two things make it different from the other tools in this space:
+
+- **It states what it can't do.** Formats without a verified algorithm (QMC0–8, KWM, X2M/X3M, MG3D, KGG) are listed as *registered, unverified* and fail loudly instead of pretending to succeed. "Recognized" is never sold as "decoded".
+- **It treats your library as the payload.** Decryption happens in memory, output goes through a single writer to a temp file, then a flush and an atomic rename. Concurrency is capped by a ~1 GiB memory budget, and the app refuses to exit mid-write. The failure mode for batch converters is a half-written file in the middle of your collection; this is designed against that.
+
+Windows only, Python 3.12, MIT licensed.
+
 音澈统一支持网易云音乐、酷狗音乐和 QQ 音乐的加密下载文件。批量导入，一键处理：自动模式只解密并保留原格式，选择 MP3 / FLAC 时再按需转码。✨
 
 ## ✨ 功能亮点

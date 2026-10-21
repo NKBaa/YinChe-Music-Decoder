@@ -5,6 +5,7 @@ __pycache__/
 .references/
 build/
 dist/
+tests/.tmp/
 
 ui-preview*.png
 .idea/
